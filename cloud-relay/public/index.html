@@ -413,6 +413,9 @@
           Waiting for booth…
         </p>
         <div id="tracker-spinner" class="spinner"></div>
+        <button id="retry-error-btn" type="button" class="btn btn-orange btn-full hidden" style="margin-top: 10px;">
+          Retry Generation
+        </button>
         <button id="cancel-back-btn" type="button" class="btn btn-full hidden" style="margin-top: 10px;">
           Cancel &amp; Edit Photo / Prompt
         </button>
@@ -486,6 +489,7 @@
         const trackerPill = document.getElementById('tracker-pill');
         const trackerMsg = document.getElementById('tracker-msg');
         const trackerSpinner = document.getElementById('tracker-spinner');
+        const retryErrorBtn = document.getElementById('retry-error-btn');
         const cancelBackBtn = document.getElementById('cancel-back-btn');
         const sheetBox = document.getElementById('sheet-box');
         const sheetImg = document.getElementById('sheet-img');
@@ -683,6 +687,8 @@
 
           const canCancelToEdit = ['pending', 'generating', 'error'].includes(sub.status);
           cancelBackBtn.classList.toggle('hidden', !canCancelToEdit);
+          const canQuickRetry = sub.status === 'error' && Boolean(photoDataUrl);
+          retryErrorBtn.classList.toggle('hidden', !canQuickRetry);
 
           const isPreviewReady = sub.status === 'preview_ready';
           previewConfirmBox.classList.toggle('hidden', !isPreviewReady);
@@ -797,10 +803,11 @@
         cancelBackBtn.addEventListener('click', returnToEditForm);
         editRegenBtn.addEventListener('click', returnToEditForm);
 
-        submitBtn.addEventListener('click', async () => {
+        async function submitForPreview() {
           const guestName = guestNameEl.value.trim();
           if (!photoDataUrl || !guestName || !boothToken || submitting) return;
           submitting = true;
+          retryErrorBtn.disabled = true;
           seededConfirmNameForId = null;
           trackerStartedAt = Date.now();
           formError.classList.add('hidden');
@@ -827,8 +834,17 @@
             formError.classList.remove('hidden');
           } finally {
             submitting = false;
+            retryErrorBtn.disabled = false;
             refreshSubmitState();
           }
+        }
+
+        retryErrorBtn.addEventListener('click', () => {
+          void submitForPreview();
+        });
+
+        submitBtn.addEventListener('click', () => {
+          void submitForPreview();
         });
 
         anotherBtn.addEventListener('click', () => {

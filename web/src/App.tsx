@@ -166,6 +166,7 @@ export default function App() {
   const [queuedJobsByFile, setQueuedJobsByFile] = useState<Record<string, PrintJob>>({});
 
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [stickerFile, setStickerFile] = useState<GalleryItem | null>(null);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
 
@@ -540,10 +541,10 @@ export default function App() {
 
   async function printPixCutDirect(
     item: GalleryItem,
-    options?: { force?: boolean; promptForName?: boolean }
+    options?: { force?: boolean; promptForName?: boolean; guestName?: string; copies?: number }
   ) {
     const force = Boolean(options?.force);
-    let effectiveName = guestNameRef.current.trim();
+    let effectiveName = (options?.guestName ?? guestNameRef.current).trim();
     if (!effectiveName && options?.promptForName) {
       const entered = window.prompt(
         'Enter guest name to print on the sticker sheet (required):'
@@ -581,7 +582,7 @@ export default function App() {
           guestName: effectiveName,
           force,
           transparentDataUrl,
-          copies,
+          copies: options?.copies ?? copies,
         }),
       });
       const data = await res.json();
@@ -709,6 +710,7 @@ export default function App() {
       typeof overrideImageUrl === 'string' ? overrideImageUrl : capturedDataUrl;
     if (!imgSource || generating) return;
     setGenerating(true);
+    setGenerateError(null);
     setStickerFile(null);
     setToast({ text: 'Generating cute sticker sheet with Nano Banana 2.1…' });
     try {
@@ -746,8 +748,10 @@ export default function App() {
         }
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Generation failed';
+      setGenerateError(msg);
       setToast({
-        text: err instanceof Error ? err.message : 'Generation failed',
+        text: msg,
         isError: true,
       });
     } finally {
@@ -1174,13 +1178,33 @@ export default function App() {
                       </span>
                     </div>
                   )
+                ) : generateError ? (
+                  <div className="no-print max-w-xs text-center space-y-3">
+                    <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-red-50 text-red-600">
+                      <AlertTriangle className="h-4 w-4" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-red-700">Generation failed</p>
+                      <p className="text-xs text-[#737373]">{generateError}</p>
+                    </div>
+                    {capturedDataUrl && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleGenerate()}
+                        className="mx-auto"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Retry Generation
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   <div className="no-print max-w-xs text-center space-y-2">
                     <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#f1f1f3]">
                       <Sparkles className="h-4 w-4 text-[#525252]" />
                     </div>
                     <p className="text-sm text-[#737373]">
-                      Snap or upload a photo on the left — stickers generate{' '}
+                      Snap or upload a solo or group photo on the left — stickers generate{' '}
                       <span className="font-medium text-[#111111]">
                         automatically
                       </span>
@@ -1733,6 +1757,26 @@ export default function App() {
                               <Eye className="h-3.5 w-3.5" />
                               View
                             </Button>
+                            {job.status === 'error' && job.filename && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-orange-200 text-[#FF6600] hover:bg-orange-50"
+                                onClick={() =>
+                                  printPixCutDirect(
+                                    { filename: job.filename, imageUrl: `/output/${job.filename}` },
+                                    {
+                                      force: true,
+                                      guestName: job.guestName || 'Guest',
+                                      copies: job.copies || 1,
+                                    }
+                                  )
+                                }
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Retry
+                              </Button>
+                            )}
                             {job.status === 'queued' && (
                               <Button
                                 variant="ghost"

@@ -500,18 +500,18 @@ function buildStickerPrompt({ style, customNote, stickerCount = 6 }) {
   const sceneInstructions = userPrompt
     ? `USER CUSTOM PROMPT (prioritize this request for the poses, outfits, props, and scenes across the ${stickerCount} stickers): "${userPrompt}". Across the ${stickerCount} stickers, split the badges evenly: style 2 badges for VexoHacks (the Vexo 3-triangle pyramid logo mark: one rounded triangle centered above two rounded triangles side-by-side below, warm cream #F7F5F0 & matte charcoal #111111 or soft lavender #EDE4FB, "VexoHacks" / "VEXO AI" text, NO "Make Something People Want"), style 2 badges exclusively for Google DeepMind / Gemini (royal-blue #4285F4 & violet #9B72CB palette, 4-point concave Gemini star logo, "Google DeepMind" / "Built with Gemini" text, NO "Make Something People Want" and NO orange [Y]), and style 2 badges in Y Combinator orange ("[Y]" + "Make Something People Want").`
     : [
-        `Show 6 distinct wearable-tech builder poses split evenly across 2 VexoHacks badges, 2 Google DeepMind / Gemini badges, and 2 Y Combinator badges:`,
+        `Show 6 distinct wearable-tech builder poses (featuring the solo person or ALL people in the group together) split evenly across 2 VexoHacks badges, 2 Google DeepMind / Gemini badges, and 2 Y Combinator badges:`,
         `(1) [Dedicated VexoHacks AI Wearables Badge — top-left, NO YC orange or "Make Something People Want"] Speaking a voice command into a sleek Vexo AI voice bracelet with glowing lavender soundwaves inside a warm cream (#F7F5F0) and matte charcoal-black (#111111) badge featuring the Vexo 3-triangle pyramid logo mark (one rounded triangle centered above two rounded triangles side-by-side below) and crisp "VexoHacks" header text;`,
-        `(2) [Dedicated Google DeepMind Badge — top-right, NO YC logo or "Make Something People Want" text] Wearing a futuristic glowing AI lapel pin / smart pendant on their chest and flashing a cheerful peace sign inside a cool ice-white (#F0F4FF) and royal-blue & violet (#4285F4, #669DF6, #9B72CB) badge featuring the 4-point concave Gemini star logo and crisp "Google DeepMind" header text;`,
+        `(2) [Dedicated Google DeepMind Badge — top-right, NO YC logo or "Make Something People Want" text] Wearing futuristic glowing AI lapel pins / smart pendants and flashing cheerful peace signs inside a cool ice-white (#F0F4FF) and royal-blue & violet (#4285F4, #669DF6, #9B72CB) badge featuring the 4-point concave Gemini star logo and crisp "Google DeepMind" header text;`,
         `(3) [Dedicated Google DeepMind / Gemini Badge — middle-left, NO YC logo or "Make Something People Want" text] Looking excited while checking multimodal AI holographic telemetry on a next-gen smartwatch / neural wristband inside a cool blue-to-violet badge featuring the iconic 4-point concave Gemini star logo and crisp "Built with Gemini" banner text;`,
         `(4) [YC Orange Badge — middle-right] Wearing sleek AR smart glasses with glowing HUD graphics inside a warm cream (#FFF7ED) & vibrant orange (#FF6600) [Y] "Make Something People Want" badge;`,
-        `(5) [Dedicated VexoHacks Hardware Badge — bottom-left, NO YC orange or "Make Something People Want"] Prototyping wearable AI sensors with smart glasses perched on their head inside a soft lavender (#EDE4FB) & charcoal (#111111) badge featuring the Vexo 3-triangle pyramid logo mark and crisp "VEXO AI · HACKS" emblem;`,
-        `(6) [YC Orange Badge — bottom-right] Demo Day launch celebration wearing smart glasses and a builder hoodie with the orange square [Y] mark and "Make Something People Want" banner.`,
+        `(5) [Dedicated VexoHacks Hardware Badge — bottom-left, NO YC orange or "Make Something People Want"] Prototyping wearable AI sensors with smart glasses inside a soft lavender (#EDE4FB) & charcoal (#111111) badge featuring the Vexo 3-triangle pyramid logo mark and crisp "VEXO AI · HACKS" emblem;`,
+        `(6) [YC Orange Badge — bottom-right] Demo Day launch celebration wearing smart glasses and builder hoodies with the orange square [Y] mark and "Make Something People Want" banner.`,
       ].join(' ');
 
   return [
-    `Turn the person in this photo into a vertical 9:16 printable die-cut sticker sheet with ${stickerCount} distinct self-contained rounded-badge stickers arranged in a spacious 2-column by 3-row grid on a completely flat pure #FFFFFF white background.`,
-    `Keep the person's recognizable likeness (facial features, hairstyle, glasses/accessories, warm personality) across all ${stickerCount} stickers. Art style: ${styleDesc}.`,
+    `Turn the person (or ALL people together if this is a group photo with 2 or more people) in this photo into a vertical 9:16 printable die-cut sticker sheet with ${stickerCount} distinct self-contained rounded-badge stickers arranged in a spacious 2-column by 3-row grid on a completely flat pure #FFFFFF white background.`,
+    `GROUP & LIKENESS RULE: If there is 1 person, feature them in every sticker; if there are multiple people in a group photo, include ALL of them together as a cohesive group in every sticker badge (preserving each person's recognizable facial features, hairstyle, glasses/accessories, and relative height/vibe — never drop or crop anyone out). Art style: ${styleDesc}.`,
     `STICKER BADGE SPLIT (2 VEXOHACKS + 2 GOOGLE DEEPMIND + 2 YC): Enclose EVERY individual sticker inside its own self-contained rounded sticker badge card with a crisp solid closed outer border. Exactly 2 stickers (top-left and bottom-left) feature VexoHacks branding (Vexo 3-triangle pyramid logo mark, warm cream #F7F5F0 / lavender #EDE4FB / charcoal #111111, "VexoHacks" / "VEXO AI"). Exactly 2 stickers (top-right and middle-left) feature Google DeepMind / Gemini branding (cool ice-white #F0F4FF, royal-blue #4285F4 & violet #9B72CB, 4-point concave Gemini star logo, "Google DeepMind" / "Built with Gemini"). Exactly 2 stickers (middle-right and bottom-right) feature Y Combinator branding (warm cream #FFF7ED, vibrant YC orange #FF6600, orange square "Y" logo, "Make Something People Want").`,
     sceneInstructions,
     `CRITICAL CUTTING & SPACING RULES: Leave extra-wide, completely empty flat #FFFFFF white channels between all 6 sticker badges and around the outer margins so each badge is isolated for clean die-cutting. Do NOT render soft grey drop shadows, background gradients, or loose floating stars/sparkles outside each badge's closed outer border.`,
@@ -603,46 +603,76 @@ async function generateStickerSheet({ imageDataUrl, style, customNote, model }) 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     selectedModel
   )}:generateContent`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { mimeType, data: base64 } },
-            { text: prompt },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: {
-          aspectRatio: '9:16',
-        },
+  const requestBody = JSON.stringify({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType, data: base64 } },
+          { text: prompt },
+        ],
       },
-    }),
+    ],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      imageConfig: {
+        aspectRatio: '9:16',
+      },
+    },
   });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    const apiMessage = payload?.error?.message || `Gemini API HTTP ${response.status}`;
-    throw new Error(apiMessage);
+  const maxAttempts = 3;
+  let lastErr = null;
+  let imagePart = null;
+  let textPart = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: requestBody,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const apiMessage = payload?.error?.message || `Gemini API HTTP ${response.status}`;
+        const err = new Error(apiMessage);
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          err.nonRetryable = true;
+        }
+        throw err;
+      }
+
+      const parts = payload?.candidates?.[0]?.content?.parts || [];
+      imagePart = parts.find((p) => p.inlineData?.data) || null;
+      textPart = parts.find((p) => p.text) || null;
+
+      if (!imagePart) {
+        throw new Error(
+          textPart?.text || 'Model did not return an image. Try another photo or model.'
+        );
+      }
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (err?.nonRetryable || attempt >= maxAttempts) {
+        throw err;
+      }
+      const backoffMs = attempt === 1 ? 1000 : 2500;
+      console.warn(
+        `[generateStickerSheet] Attempt ${attempt}/${maxAttempts} failed (${err?.message || err}); retrying in ${backoffMs}ms...`
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
   }
 
-  const parts = payload?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find((p) => p.inlineData?.data);
-  const textPart = parts.find((p) => p.text);
-
-  if (!imagePart) {
-    throw new Error(
-      textPart?.text || 'Model did not return an image. Try another photo or model.'
-    );
+  if (lastErr || !imagePart) {
+    throw lastErr || new Error('Generation failed after retries.');
   }
 
   const outMime = imagePart.inlineData.mimeType || 'image/png';
