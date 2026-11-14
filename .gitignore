@@ -1,0 +1,16 @@
+# Runtime outputs, guest photos, print queue state, and secrets
+output/
+.env
+.env.*
+!.env.op.example
+
+# Python / uv caches
+__pycache__/
+*.py[cod]
+
+# Frontend dependencies and build artifacts
+web/node_modules/
+web/dist/
+
+# macOS
+.DS_Store

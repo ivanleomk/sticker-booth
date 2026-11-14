@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nano Banana Sticker Booth</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar no-print">
+      <div class="brand">
+        <span class="logo">🍌</span>
+        <div>
+          <h1>Nano Banana Sticker Booth</h1>
+          <p class="subtitle">Snap a photo &rarr; Generate a cute die-cut sticker sheet &rarr; Print</p>
+        </div>
+      </div>
+      <div class="status-pills">
+        <span id="apiStatusPill" class="pill pill-muted">Checking API…</span>
+        <span id="printerStatusPill" class="pill pill-muted">Checking printer…</span>
+      </div>
+    </header>
+
+    <main class="booth-grid">
+      <!-- Left Column: Camera / Photo Input -->
+      <section class="card no-print">
+        <div class="card-header">
+          <h2>1. Take a Photo</h2>
+          <div class="row-actions">
+            <button id="mirrorBtn" class="btn btn-ghost btn-sm" type="button" title="Mirror webcam">
+              ⇄ Mirror
+            </button>
+            <label class="btn btn-ghost btn-sm upload-label">
+              📁 Upload
+              <input id="fileInput" type="file" accept="image/*" hidden />
+            </label>
+          </div>
+        </div>
+
+        <div class="viewport-wrap">
+          <video id="video" autoplay playsinline muted class="mirrored"></video>
+          <img id="capturedPreview" alt="Captured photo" class="hidden" />
+          <div id="countdownOverlay" class="countdown hidden">3</div>
+          <div id="cameraError" class="camera-error hidden">
+            Camera unavailable. Allow camera access or click <strong>Upload</strong> above.
+          </div>
+        </div>
+        <canvas id="captureCanvas" hidden></canvas>
+
+        <div class="capture-controls">
+          <button id="countdownSnapBtn" class="btn btn-primary" type="button">
+            📸 3s Countdown Snap
+          </button>
+          <button id="instantSnapBtn" class="btn btn-secondary" type="button">
+            ⚡ Instant Snap
+          </button>
+          <button id="retakeBtn" class="btn btn-ghost hidden" type="button">
+            ↺ Retake
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="style-section">
+          <h3>2. Pick Sticker Style</h3>
+          <div id="stylePills" class="style-pills">
+            <button class="style-pill active" data-style="kawaii" type="button">🌸 Kawaii Chibi</button>
+            <button class="style-pill" data-style="pastel" type="button">🍬 Pastel Pop</button>
+            <button class="style-pill" data-style="doodle" type="button">✏️ Notebook Doodle</button>
+            <button class="style-pill" data-style="vinyl" type="button">🧸 3D Vinyl Toy</button>
+            <button class="style-pill" data-style="watercolor" type="button">🎨 Watercolor</button>
+          </div>
+
+          <div class="form-row">
+            <label class="field">
+              <span>Optional theme / prop / vibe</span>
+              <input
+                id="customNote"
+                type="text"
+                placeholder="e.g. holding iced matcha, birthday party, sparkly stars"
+              />
+            </label>
+            <label class="field field-compact">
+              <span>Model</span>
+              <select id="modelSelect">
+                <option value="gemini-3.1-flash-image">Nano Banana 2 (3.1 Flash)</option>
+                <option value="gemini-2.5-flash-image">Nano Banana (2.5 Flash)</option>
+                <option value="gemini-3-pro-image">Nano Banana Pro (3 Pro)</option>
+              </select>
+            </label>
+          </div>
+
+          <button id="generateBtn" class="btn btn-accent btn-lg" type="button" disabled>
+            ✨ Generate Cute Stickers
+          </button>
+        </div>
+      </section>
+
+      <!-- Right Column: Sticker Output & Print Automation -->
+      <section class="card output-card">
+        <div class="card-header no-print">
+          <h2>3. Sticker Sheet &amp; Print</h2>
+          <label class="toggle">
+            <input id="autoPrintToggle" type="checkbox" />
+            <span>Auto-print when ready</span>
+          </label>
+        </div>
+
+        <div id="stickerStage" class="sticker-stage">
+          <div id="emptyState" class="empty-state no-print">
+            <div class="empty-icon">✨</div>
+            <p>Snap or upload a photo on the left, then click <strong>Generate Cute Stickers</strong>.</p>
+          </div>
+          <div id="loadingState" class="loading-state hidden no-print">
+            <div class="spinner"></div>
+            <p>Nano Banana is illustrating your sticker sheet…</p>
+          </div>
+          <img id="stickerImage" alt="Generated sticker sheet" class="sticker-image hidden" />
+        </div>
+
+        <div id="printPanel" class="print-panel no-print">
+          <div class="print-header">
+            <h3>Printer Automation (macOS CUPS)</h3>
+            <button id="refreshPrintersBtn" class="btn btn-ghost btn-sm" type="button">
+              ↻ Refresh
+            </button>
+          </div>
+
+          <p id="printerMessage" class="printer-message">Checking connected printers…</p>
+
+          <div class="print-options">
+            <label class="field">
+              <span>Printer</span>
+              <select id="printerSelect" disabled>
+                <option value="">No printer detected</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Paper / Media</span>
+              <select id="mediaSelect" disabled>
+                <option value="">Default</option>
+              </select>
+            </label>
+            <label class="field field-tiny">
+              <span>Copies</span>
+              <input id="copiesInput" type="number" min="1" max="10" value="1" />
+            </label>
+          </div>
+
+          <div class="print-actions">
+            <button id="cupsPrintBtn" class="btn btn-primary" type="button" disabled>
+              🖨️ Print Now (Automated)
+            </button>
+            <button id="browserPrintBtn" class="btn btn-secondary" type="button" disabled>
+              📄 Browser Print
+            </button>
+            <a id="downloadLink" class="btn btn-ghost disabled" download>
+              ⬇ Save PNG
+            </a>
+          </div>
+          <p id="statusToast" class="status-toast" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+
+    <section class="card gallery-card no-print">
+      <div class="card-header">
+        <h2>Recent Sticker Sheets</h2>
+        <span class="subtitle">Saved in <code>output/</code></span>
+      </div>
+      <div id="galleryGrid" class="gallery-grid"></div>
+    </section>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
