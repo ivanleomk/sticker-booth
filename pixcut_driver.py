@@ -926,7 +926,7 @@ async def cmd_daemon(transport: str) -> None:
             _emit({"event": "status", **last_status})
             cur_pc: client.PixCut | None = None
             try:
-                for attempt in range(2):
+                for attempt in range(4):
                     cur_pc, _name, _addr, tr = await ensure_connected()
                     _emit(
                         {
@@ -940,7 +940,16 @@ async def cmd_daemon(transport: str) -> None:
                     )
                     st, cancelled = await recover_printer(cur_pc)
                     if cancelled:
-                        _log(f"Cleared latched jobs before print: {cancelled}")
+                        _log(f"Cleared latched jobs before print: {cancelled}; waiting for printer to settle...")
+                        await asyncio.sleep(2.0)
+                        st = await cur_pc.status()
+                    for _ in range(6):
+                        latched = st.get("latchedJobs") or st.get("latched-jobs") or []
+                        st_code = str(st.get("state", ""))
+                        if not latched and st_code in ("20", ""):
+                            break
+                        await asyncio.sleep(1.0)
+                        st = await cur_pc.status()
                     blk = states.blocking(states.faults(st))
                     if blk:
                         msgs = "; ".join(
@@ -981,9 +990,11 @@ async def cmd_daemon(transport: str) -> None:
                             on_upload=on_upload,
                         )
                     except client.UploadInterrupted as exc:
-                        if getattr(exc, "retryable", False) and attempt == 0:
+                        is_retryable = getattr(exc, "retryable", False) or "8006" in str(exc)
+                        if is_retryable and attempt < 3:
+                            backoff = 1.5 * (attempt + 1)
                             _log(
-                                f"Retryable UploadInterrupted ({exc}); reconnecting and retrying once..."
+                                f"Retryable UploadInterrupted ({exc}); reconnecting and retrying in {backoff:.1f}s (attempt {attempt + 2}/4)..."
                             )
                             _emit(
                                 {
@@ -991,11 +1002,12 @@ async def cmd_daemon(transport: str) -> None:
                                     "queueId": queue_id,
                                     "phase": "retry",
                                     "pct": 0,
-                                    "text": "Upload interrupted, reconnecting…",
+                                    "text": f"Printer busy (8006), retrying in {backoff:.1f}s…",
                                     "transport": tr,
                                 }
                             )
                             await disconnect_pc()
+                            await asyncio.sleep(backoff)
                             continue
                         raise
 
