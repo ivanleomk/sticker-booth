@@ -1808,6 +1808,25 @@ export default function App() {
                               <Eye className="h-3.5 w-3.5" />
                               View
                             </Button>
+                            {job.status === 'done' && job.filename && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  printPixCutDirect(
+                                    { filename: job.filename, imageUrl: `/output/${job.filename}` },
+                                    {
+                                      force: true,
+                                      guestName: job.guestName || 'Guest',
+                                      copies: 1,
+                                    }
+                                  )
+                                }
+                              >
+                                <Printer className="h-3.5 w-3.5" />
+                                Reprint
+                              </Button>
+                            )}
                             {job.status === 'error' && job.filename && (
                               <Button
                                 variant="outline"
