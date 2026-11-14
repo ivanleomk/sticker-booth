@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -99,21 +100,87 @@ function parseLastJsonLine(text) {
   return null;
 }
 
+const imageHashCache = new Map();
+
+async function computeImageHashForFile(filename, fallbackPath = null) {
+  const safeName = path.basename(filename || '');
+  const cacheKey = safeName || fallbackPath || '';
+  if (!cacheKey) return null;
+  if (imageHashCache.has(cacheKey)) {
+    return imageHashCache.get(cacheKey);
+  }
+  const candidates = [];
+  if (safeName) candidates.push(path.join(OUTPUT_DIR, safeName));
+  if (fallbackPath) candidates.push(fallbackPath);
+  for (const p of candidates) {
+    try {
+      const buf = await fs.readFile(p);
+      const hash = crypto.createHash('sha256').update(buf).digest('hex');
+      imageHashCache.set(cacheKey, hash);
+      return hash;
+    } catch {
+      // Try next candidate
+    }
+  }
+  return null;
+}
+
+async function ensureJobImageHash(job) {
+  if (!job || job.imageHash) return job?.imageHash || null;
+  const h = await computeImageHashForFile(job.filename, job.pngPath);
+  if (h) job.imageHash = h;
+  return h;
+}
+
+function getJobKeys(job) {
+  const keys = [];
+  if (job?.imageHash) keys.push(`hash:${job.imageHash}`);
+  if (job?.filename) keys.push(`file:${job.filename}`);
+  return keys;
+}
+
 function dedupeQueueArray(queuedList, historyList, activeJobObj = null) {
   const seen = new Set();
-  if (activeJobObj?.filename) {
-    seen.add(activeJobObj.filename);
-  }
+  for (const k of getJobKeys(activeJobObj)) seen.add(k);
   for (const h of historyList || []) {
-    if (h?.status === 'done' && h?.filename) {
-      seen.add(h.filename);
+    if (h?.status === 'done') {
+      for (const k of getJobKeys(h)) seen.add(k);
     }
   }
   const result = [];
   for (const item of queuedList || []) {
-    if (!item?.filename || seen.has(item.filename)) continue;
-    seen.add(item.filename);
+    const keys = getJobKeys(item);
+    if (keys.length === 0 || keys.some((k) => seen.has(k))) continue;
+    for (const k of keys) seen.add(k);
     result.push(item);
+  }
+  return result;
+}
+
+function dedupeHistoryErrors(historyList, queuedList, activeJobObj = null) {
+  const knownGoodOrActive = new Set();
+  for (const k of getJobKeys(activeJobObj)) knownGoodOrActive.add(k);
+  for (const q of queuedList || []) {
+    for (const k of getJobKeys(q)) knownGoodOrActive.add(k);
+  }
+  for (const h of historyList || []) {
+    if (h?.status === 'done') {
+      for (const k of getJobKeys(h)) knownGoodOrActive.add(k);
+    }
+  }
+  const seenError = new Set();
+  const result = [];
+  for (const h of historyList || []) {
+    if (h?.status !== 'error') {
+      result.push(h);
+      continue;
+    }
+    const keys = getJobKeys(h);
+    if (keys.some((k) => knownGoodOrActive.has(k) || seenError.has(k))) {
+      continue;
+    }
+    for (const k of keys) seenError.add(k);
+    result.push(h);
   }
   return result;
 }
@@ -1302,10 +1369,19 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/queue/dedupe') {
-      const before = printQueue.length;
+      await Promise.all([
+        ensureJobImageHash(activePrintJob),
+        ...printQueue.map((j) => ensureJobImageHash(j)),
+        ...printHistory.map((j) => ensureJobImageHash(j)),
+      ]);
+      const beforeQueue = printQueue.length;
+      const beforeHistory = printHistory.length;
       const deduped = dedupeQueueArray(printQueue, printHistory, activePrintJob);
       printQueue.splice(0, printQueue.length, ...deduped);
-      const removedCount = before - printQueue.length;
+      const dedupedHist = dedupeHistoryErrors(printHistory, printQueue, activePrintJob);
+      printHistory.splice(0, printHistory.length, ...dedupedHist);
+      const removedCount =
+        (beforeQueue - printQueue.length) + (beforeHistory - printHistory.length);
       await saveQueueState();
       sendJson(res, 200, {
         ok: true,
@@ -1345,9 +1421,14 @@ const server = http.createServer(async (req, res) => {
       }
       const force = Boolean(body?.force);
       const copies = Math.max(1, Math.min(10, Number(body?.copies) || 1));
+      const imageHash = await computeImageHashForFile(safeName);
+      if (activePrintJob) await ensureJobImageHash(activePrintJob);
 
       if (!force) {
-        if (activePrintJob?.filename === safeName) {
+        if (
+          activePrintJob?.filename === safeName ||
+          (imageHash && activePrintJob?.imageHash === imageHash)
+        ) {
           sendJson(res, 200, {
             ok: true,
             alreadyQueued: true,
@@ -1356,7 +1437,12 @@ const server = http.createServer(async (req, res) => {
           });
           return;
         }
-        const existingQueued = printQueue.find((j) => j.filename === safeName);
+        for (const qj of printQueue) {
+          if (imageHash) await ensureJobImageHash(qj);
+        }
+        const existingQueued = printQueue.find(
+          (j) => j.filename === safeName || (imageHash && j.imageHash === imageHash)
+        );
         if (existingQueued) {
           if (guestName && !existingQueued.guestName) {
             existingQueued.guestName = guestName;
@@ -1375,8 +1461,13 @@ const server = http.createServer(async (req, res) => {
           });
           return;
         }
+        for (const hj of printHistory) {
+          if (imageHash && hj.status === 'done') await ensureJobImageHash(hj);
+        }
         const existingDone = printHistory.find(
-          (j) => j.filename === safeName && j.status === 'done'
+          (j) =>
+            j.status === 'done' &&
+            (j.filename === safeName || (imageHash && j.imageHash === imageHash))
         );
         if (existingDone) {
           sendJson(res, 200, {
@@ -1403,6 +1494,7 @@ const server = http.createServer(async (req, res) => {
       const job = {
         id: nextQueueId++,
         filename: safeName,
+        imageHash,
         guestName,
         source: 'booth',
         pngPath,
