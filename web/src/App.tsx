@@ -623,6 +623,25 @@ export default function App() {
     }
   }
 
+  async function handleRetryJob(id: number) {
+    try {
+      const res = await fetch('/api/queue/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to retry job');
+      setToast({ text: `Re-queued #${id} for printing` });
+      await loadQueue();
+    } catch (err) {
+      setToast({
+        text: err instanceof Error ? err.message : 'Failed to retry job',
+        isError: true,
+      });
+    }
+  }
+
   async function handleRemoveQueuedJob(id: number) {
     try {
       const res = await fetch('/api/queue/remove', {
@@ -1794,16 +1813,7 @@ export default function App() {
                                 variant="outline"
                                 size="sm"
                                 className="border-orange-200 text-[#FF6600] hover:bg-orange-50"
-                                onClick={() =>
-                                  printPixCutDirect(
-                                    { filename: job.filename, imageUrl: `/output/${job.filename}` },
-                                    {
-                                      force: true,
-                                      guestName: job.guestName || 'Guest',
-                                      copies: job.copies || 1,
-                                    }
-                                  )
-                                }
+                                onClick={() => handleRetryJob(job.id)}
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
                                 Retry

@@ -1276,6 +1276,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/queue/retry') {
+      const body = await readJsonBody(req);
+      const targetId = Number(body?.id);
+      const idx = printHistory.findIndex((j) => j.id === targetId && j.status === 'error');
+      if (idx === -1) {
+        sendJson(res, 404, { ok: false, error: 'Failed job not found in history' });
+        return;
+      }
+      const [job] = printHistory.splice(idx, 1);
+      job.status = 'queued';
+      job.error = null;
+      job.phase = null;
+      job.pct = 0;
+      job.progressText = 'Queued for retry';
+      job.startedAt = null;
+      job.finishedAt = null;
+      job.message = 'Re-queued for retry';
+      printQueue.push(job);
+      schedulePrepareJob(job);
+      await saveQueueState();
+      processPrintQueue();
+      sendJson(res, 200, { ok: true, job: sanitizeJob(job) });
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/queue/dedupe') {
       const before = printQueue.length;
       const deduped = dedupeQueueArray(printQueue, printHistory, activePrintJob);
