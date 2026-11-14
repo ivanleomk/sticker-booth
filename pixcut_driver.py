@@ -942,14 +942,14 @@ async def cmd_daemon(transport: str) -> None:
                     if cancelled:
                         _log(f"Cleared latched jobs before print: {cancelled}; waiting for printer to settle...")
                         await asyncio.sleep(2.0)
-                        st = await cur_pc.status()
+                        st = await cur_pc.state()
                     for _ in range(6):
-                        latched = st.get("latchedJobs") or st.get("latched-jobs") or []
-                        st_code = str(st.get("state", ""))
+                        latched = await cur_pc.job_id_list()
+                        st_code = str(st.get("printer-state", ""))
                         if not latched and st_code in ("20", ""):
                             break
                         await asyncio.sleep(1.0)
-                        st = await cur_pc.status()
+                        st = await cur_pc.state()
                     blk = states.blocking(states.faults(st))
                     if blk:
                         msgs = "; ".join(

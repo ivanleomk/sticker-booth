@@ -1294,7 +1294,7 @@ const server = http.createServer(async (req, res) => {
       job.finishedAt = null;
       job.message = 'Re-queued for retry';
       printQueue.push(job);
-      schedulePrepareJob(job);
+      void prepareJobAssets(job).catch(() => {});
       await saveQueueState();
       processPrintQueue();
       sendJson(res, 200, { ok: true, job: sanitizeJob(job) });
