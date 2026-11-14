@@ -1073,9 +1073,9 @@ async def cmd_daemon(transport: str) -> None:
 
                     try:
                         outcome = await cur_pc.wait(
-                            job_id, poll=1.0, timeout=300.0, on_progress=on_progress
+                            job_id, poll=1.0, timeout=150.0, on_progress=on_progress
                         )
-                    except client.PixCutAlert as exc:
+                    except (client.PixCutAlert, TimeoutError) as exc:
                         _log(
                             f"Printer alert during job #{job_id}: {exc}; cancelling latched job"
                         )
