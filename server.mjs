@@ -588,7 +588,7 @@ async function getPrinters() {
   }
 }
 
-async function generateStickerSheet({ imageDataUrl, style, customNote, model }) {
+async function generateStickerSheet({ imageDataUrl, style, customNote, model, signal }) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -627,6 +627,12 @@ async function generateStickerSheet({ imageDataUrl, style, customNote, model }) 
   let textPart = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) {
+      const abortErr = new Error('Generation aborted');
+      abortErr.name = 'AbortError';
+      abortErr.nonRetryable = true;
+      throw abortErr;
+    }
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -635,6 +641,7 @@ async function generateStickerSheet({ imageDataUrl, style, customNote, model }) 
           'x-goog-api-key': apiKey,
         },
         body: requestBody,
+        signal,
       });
 
       const payload = await response.json().catch(() => ({}));
@@ -660,7 +667,7 @@ async function generateStickerSheet({ imageDataUrl, style, customNote, model }) 
       break;
     } catch (err) {
       lastErr = err;
-      if (err?.nonRetryable || attempt >= maxAttempts) {
+      if (signal?.aborted || err?.name === 'AbortError' || err?.nonRetryable || attempt >= maxAttempts) {
         throw err;
       }
       const backoffMs = attempt === 1 ? 1000 : 2500;
@@ -1096,8 +1103,26 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       const body = await readJsonBody(req);
-      const result = await generateStickerSheet(body);
-      sendJson(res, 200, result);
+      const ac = new AbortController();
+      const onResClose = () => {
+        if (!res.writableEnded) {
+          ac.abort();
+        }
+      };
+      res.on('close', onResClose);
+      try {
+        const result = await generateStickerSheet({ ...body, signal: ac.signal });
+        if (!res.writableEnded) {
+          sendJson(res, 200, result);
+        }
+      } catch (err) {
+        if (ac.signal.aborted || err?.name === 'AbortError' || res.writableEnded) {
+          return;
+        }
+        throw err;
+      } finally {
+        res.off('close', onResClose);
+      }
       return;
     }
 

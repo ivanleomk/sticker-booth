@@ -20,7 +20,6 @@ import {
   Upload,
   User,
   X,
-  Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -167,6 +166,8 @@ export default function App() {
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const generateAbortRef = useRef<AbortController | null>(null);
+  const generateRequestIdRef = useRef(0);
   const [stickerFile, setStickerFile] = useState<GalleryItem | null>(null);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
 
@@ -415,7 +416,18 @@ export default function App() {
     void handleGenerate(dataUrl);
   }
 
+  function cancelInFlightGeneration() {
+    if (generateAbortRef.current) {
+      generateAbortRef.current.abort();
+      generateAbortRef.current = null;
+    }
+    generateRequestIdRef.current += 1;
+    setGenerating(false);
+  }
+
   async function handleCountdownSnap() {
+    cancelInFlightGeneration();
+    setGenerateError(null);
     setSnapPreviewUrl(null);
     for (const n of [3, 2, 1]) {
       setCountdown(n);
@@ -708,7 +720,13 @@ export default function App() {
   async function handleGenerate(overrideImageUrl?: string) {
     const imgSource =
       typeof overrideImageUrl === 'string' ? overrideImageUrl : capturedDataUrl;
-    if (!imgSource || generating) return;
+    if (!imgSource) return;
+
+    cancelInFlightGeneration();
+    const requestId = generateRequestIdRef.current;
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
+
     setGenerating(true);
     setGenerateError(null);
     setStickerFile(null);
@@ -717,6 +735,7 @@ export default function App() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           imageDataUrl: imgSource,
           style: selectedStyle,
@@ -726,6 +745,9 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Generation failed');
+      if (controller.signal.aborted || requestId !== generateRequestIdRef.current) {
+        return;
+      }
 
       const created: GalleryItem = {
         filename: data.filename,
@@ -734,6 +756,10 @@ export default function App() {
       setStickerFile(created);
       setToast({ text: 'Sticker sheet ready!' });
       await loadGallery();
+
+      if (controller.signal.aborted || requestId !== generateRequestIdRef.current) {
+        return;
+      }
 
       if (autoPrint) {
         if (pixcut.connected) {
@@ -748,6 +774,13 @@ export default function App() {
         }
       }
     } catch (err) {
+      if (
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        requestId !== generateRequestIdRef.current
+      ) {
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Generation failed';
       setGenerateError(msg);
       setToast({
@@ -755,7 +788,12 @@ export default function App() {
         isError: true,
       });
     } finally {
-      setGenerating(false);
+      if (requestId === generateRequestIdRef.current) {
+        if (generateAbortRef.current === controller) {
+          generateAbortRef.current = null;
+        }
+        setGenerating(false);
+      }
     }
   }
 
@@ -1002,20 +1040,14 @@ export default function App() {
                   disabled={!cameraReady || countdown !== null}
                 >
                   <Camera className="h-4 w-4" />
-                  3s Countdown
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={snapFromVideo}
-                  disabled={!cameraReady || countdown !== null}
-                >
-                  <Zap className="h-4 w-4" />
-                  Instant Snap
+                  Take Photo
                 </Button>
                 {capturedDataUrl && (
                   <Button
                     variant="ghost"
                     onClick={() => {
+                      cancelInFlightGeneration();
+                      setGenerateError(null);
                       setCapturedDataUrl(null);
                       setSnapPreviewUrl(null);
                       setStickerFile(null);
