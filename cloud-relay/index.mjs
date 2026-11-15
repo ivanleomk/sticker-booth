@@ -257,6 +257,33 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/stickers') {
+      const token = (url.searchParams.get('k') || '').trim();
+      if (!BOOTH_TOKEN || !safeEqual(token, BOOTH_TOKEN)) {
+        sendJson(res, 403, { ok: false, error: 'Invalid booth token' });
+        return;
+      }
+      try {
+        const gcsRes = await fetch(
+          'https://storage.googleapis.com/ivan-agent-hub-sticker-booth/manifest.json',
+          { cache: 'no-store' }
+        );
+        if (!gcsRes.ok) {
+          sendJson(res, 502, { ok: false, error: `GCS manifest HTTP ${gcsRes.status}` });
+          return;
+        }
+        const manifest = await gcsRes.json();
+        sendJson(res, 200, {
+          ok: true,
+          updatedAt: manifest.updatedAt || null,
+          items: Array.isArray(manifest.items) ? manifest.items : [],
+        });
+      } catch (err) {
+        sendJson(res, 502, { ok: false, error: err?.message || 'Could not load sticker manifest' });
+      }
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/worker/claim') {
       if (!isWorkerAuthorized(req)) {
         sendJson(res, 401, { ok: false, error: 'Unauthorized worker' });

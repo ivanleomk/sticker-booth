@@ -387,6 +387,35 @@
         font-weight: 600;
         margin-bottom: 10px;
       }
+      .gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .gallery-item {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: #fafafa;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .gallery-item img {
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        object-fit: cover;
+        border-radius: 10px;
+        background: #fff;
+      }
+      .gallery-item-title {
+        font-size: 13px;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       }
       .hidden {
         display: none !important;
@@ -572,6 +601,25 @@
           <p class="queue-empty">Loading live queue…</p>
         </div>
       </section>
+
+      <section id="gallery-card" class="card hidden">
+        <div class="queue-header">
+          <div>
+            <h2 style="font-size: 16px; margin: 0;">Download Sticker Sheets</h2>
+            <p id="gallery-subtitle" class="muted" style="font-size: 11px; margin: 2px 0 0;">
+              Loading saved sticker sheets…
+            </p>
+          </div>
+        </div>
+        <input
+          id="gallery-search"
+          type="search"
+          placeholder="Search by name or #ticket…"
+          style="margin-top: 4px;"
+        />
+        <div id="gallery-grid" class="gallery-grid"></div>
+        <p id="gallery-empty" class="queue-empty hidden">No matching sticker sheets found.</p>
+      </section>
     </main>
 
     <script>
@@ -619,6 +667,12 @@
         const queueTurnBanner = document.getElementById('queue-turn-banner');
         const queueAlertBanner = document.getElementById('queue-alert-banner');
         const queueBody = document.getElementById('queue-body');
+        const galleryCard = document.getElementById('gallery-card');
+        const gallerySubtitle = document.getElementById('gallery-subtitle');
+        const gallerySearch = document.getElementById('gallery-search');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const galleryEmpty = document.getElementById('gallery-empty');
+        let galleryItems = [];
 
         let photoDataUrl = null;
         let selectedStyle = 'chibi';
@@ -1156,10 +1210,73 @@
           void fetchQueueSnapshot();
         });
 
+        function renderGallery() {
+          const q = (gallerySearch.value || '').trim().toLowerCase();
+          const filtered = q
+            ? galleryItems.filter((item) => {
+                const name = (item.guestName || '').toLowerCase();
+                const idStr = `#${item.id}`;
+                return name.includes(q) || idStr.includes(q) || String(item.id).includes(q);
+              })
+            : galleryItems;
+
+          galleryGrid.innerHTML = '';
+          galleryEmpty.classList.toggle('hidden', filtered.length > 0);
+          filtered.forEach((item) => {
+            const card = document.createElement('div');
+            card.className = 'gallery-item';
+
+            const img = document.createElement('img');
+            img.src = item.url;
+            img.alt = `#${item.id} ${item.guestName || 'Stickers'}`;
+            img.loading = 'lazy';
+            card.appendChild(img);
+
+            const title = document.createElement('div');
+            title.className = 'gallery-item-title';
+            title.textContent = `#${item.id} · ${item.guestName || 'Guest'}`;
+            card.appendChild(title);
+
+            const dl = document.createElement('a');
+            dl.className = 'btn btn-primary';
+            dl.style.height = '36px';
+            dl.style.fontSize = '12px';
+            dl.href = item.url;
+            dl.download = `vexohacks-stickers-${item.id}.jpg`;
+            dl.target = '_blank';
+            dl.rel = 'noopener';
+            dl.textContent = 'Download';
+            card.appendChild(dl);
+
+            galleryGrid.appendChild(card);
+          });
+        }
+
+        async function fetchGallery() {
+          if (!boothToken) return;
+          try {
+            const res = await fetch(`/api/stickers?k=${encodeURIComponent(boothToken)}`);
+            const data = await res.json();
+            if (res.ok && data.ok && Array.isArray(data.items)) {
+              galleryItems = data.items;
+              gallerySubtitle.textContent = `${galleryItems.length} sticker sheets available`;
+              renderGallery();
+            } else {
+              gallerySubtitle.textContent = 'No saved sticker sheets yet';
+            }
+          } catch {
+            gallerySubtitle.textContent = 'Could not load saved sticker sheets';
+          }
+        }
+
+        gallerySearch.addEventListener('input', renderGallery);
+
         refreshSubmitState();
         if (boothToken) {
           queueCard.classList.remove('hidden');
+          galleryCard.classList.remove('hidden');
           void fetchQueueSnapshot();
+          void fetchGallery();
           queuePollTimer = setInterval(fetchQueueSnapshot, 4000);
         }
         if (storageKey) {
