@@ -30,13 +30,40 @@
         background: var(--bg);
         color: var(--ink);
         padding: 16px 14px 40px;
+        overflow-x: hidden;
       }
       .wrap {
+        width: 100%;
         max-width: 460px;
         margin: 0 auto;
         display: flex;
         flex-direction: column;
         gap: 14px;
+        min-width: 0;
+      }
+      .mode-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        background: #ececef;
+        padding: 4px;
+        border-radius: 14px;
+      }
+      .mode-tab {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        border-radius: 10px;
+        height: 38px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .mode-tab.active {
+        background: #fff;
+        color: var(--ink);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
       .header {
         display: flex;
@@ -388,29 +415,37 @@
         margin-bottom: 10px;
       }
       .gallery-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
-        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 12px;
       }
       .gallery-item {
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: 16px;
         background: #fafafa;
-        padding: 8px;
+        padding: 12px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 10px;
       }
       .gallery-item img {
         width: 100%;
-        aspect-ratio: 3 / 4;
-        object-fit: cover;
-        border-radius: 10px;
+        height: auto;
+        max-height: 520px;
+        object-fit: contain;
+        border-radius: 12px;
         background: #fff;
+        border: 1px solid var(--border);
+      }
+      .gallery-item-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
       }
       .gallery-item-title {
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 700;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -442,6 +477,36 @@
         <strong>Scan the QR code at the booth</strong> to link your phone to the live sticker printer queue.
       </div>
 
+      <div id="mode-tabs" class="mode-tabs hidden" role="tablist">
+        <button id="tab-feed" type="button" class="mode-tab active" role="tab" aria-selected="true">
+          Stickers Feed
+        </button>
+        <button id="tab-create" type="button" class="mode-tab" role="tab" aria-selected="false">
+          Queue &amp; Create
+        </button>
+      </div>
+
+      <section id="gallery-card" class="card hidden">
+        <div class="queue-header" style="margin-bottom: 8px;">
+          <div>
+            <h2 style="font-size: 16px; margin: 0;">Sticker Feed</h2>
+            <p id="gallery-subtitle" class="muted" style="font-size: 12px; margin: 2px 0 0;">
+              Loading saved sticker sheets…
+            </p>
+          </div>
+        </div>
+        <input
+          id="gallery-search"
+          class="input"
+          type="search"
+          placeholder="Search your name or #ticket…"
+          autocomplete="off"
+        />
+        <div id="gallery-grid" class="gallery-grid"></div>
+        <p id="gallery-empty" class="queue-empty hidden">No matching sticker sheets found.</p>
+      </section>
+
+      <div id="create-panel" class="wrap hidden" style="padding: 0; gap: 14px;">
       <section id="form-view" class="wrap" style="padding: 0; gap: 14px;">
         <div class="card">
           <div class="step-title">
@@ -601,25 +666,7 @@
           <p class="queue-empty">Loading live queue…</p>
         </div>
       </section>
-
-      <section id="gallery-card" class="card hidden">
-        <div class="queue-header">
-          <div>
-            <h2 style="font-size: 16px; margin: 0;">Download Sticker Sheets</h2>
-            <p id="gallery-subtitle" class="muted" style="font-size: 11px; margin: 2px 0 0;">
-              Loading saved sticker sheets…
-            </p>
-          </div>
-        </div>
-        <input
-          id="gallery-search"
-          type="search"
-          placeholder="Search by name or #ticket…"
-          style="margin-top: 4px;"
-        />
-        <div id="gallery-grid" class="gallery-grid"></div>
-        <p id="gallery-empty" class="queue-empty hidden">No matching sticker sheets found.</p>
-      </section>
+      </div>
     </main>
 
     <script>
@@ -629,6 +676,10 @@
         const storageKey = boothToken ? `sb_sub_${boothToken.slice(0, 12)}` : '';
 
         const missingBanner = document.getElementById('missing-token-banner');
+        const modeTabs = document.getElementById('mode-tabs');
+        const tabFeed = document.getElementById('tab-feed');
+        const tabCreate = document.getElementById('tab-create');
+        const createPanel = document.getElementById('create-panel');
         const formView = document.getElementById('form-view');
         const trackerView = document.getElementById('tracker-view');
 
@@ -1210,6 +1261,19 @@
           void fetchQueueSnapshot();
         });
 
+        function setActiveTab(tab) {
+          const isFeed = tab === 'feed';
+          tabFeed.classList.toggle('active', isFeed);
+          tabFeed.setAttribute('aria-selected', String(isFeed));
+          tabCreate.classList.toggle('active', !isFeed);
+          tabCreate.setAttribute('aria-selected', String(!isFeed));
+          galleryCard.classList.toggle('hidden', !isFeed);
+          createPanel.classList.toggle('hidden', isFeed);
+        }
+
+        tabFeed.addEventListener('click', () => setActiveTab('feed'));
+        tabCreate.addEventListener('click', () => setActiveTab('create'));
+
         function renderGallery() {
           const q = (gallerySearch.value || '').trim().toLowerCase();
           const filtered = q
@@ -1226,27 +1290,34 @@
             const card = document.createElement('div');
             card.className = 'gallery-item';
 
-            const img = document.createElement('img');
-            img.src = item.url;
-            img.alt = `#${item.id} ${item.guestName || 'Stickers'}`;
-            img.loading = 'lazy';
-            card.appendChild(img);
+            const hdr = document.createElement('div');
+            hdr.className = 'gallery-item-header';
 
             const title = document.createElement('div');
             title.className = 'gallery-item-title';
             title.textContent = `#${item.id} · ${item.guestName || 'Guest'}`;
-            card.appendChild(title);
+            hdr.appendChild(title);
 
             const dl = document.createElement('a');
             dl.className = 'btn btn-primary';
             dl.style.height = '36px';
-            dl.style.fontSize = '12px';
+            dl.style.padding = '0 14px';
+            dl.style.fontSize = '13px';
+            dl.style.flexShrink = '0';
             dl.href = item.url;
             dl.download = `vexohacks-stickers-${item.id}.jpg`;
             dl.target = '_blank';
             dl.rel = 'noopener';
             dl.textContent = 'Download';
-            card.appendChild(dl);
+            hdr.appendChild(dl);
+
+            card.appendChild(hdr);
+
+            const img = document.createElement('img');
+            img.src = item.url;
+            img.alt = `#${item.id} ${item.guestName || 'Stickers'}`;
+            img.loading = 'lazy';
+            card.appendChild(img);
 
             galleryGrid.appendChild(card);
           });
@@ -1259,7 +1330,7 @@
             const data = await res.json();
             if (res.ok && data.ok && Array.isArray(data.items)) {
               galleryItems = data.items;
-              gallerySubtitle.textContent = `${galleryItems.length} sticker sheets available`;
+              gallerySubtitle.textContent = `${galleryItems.length} sticker sheets · tap Download to save`;
               renderGallery();
             } else {
               gallerySubtitle.textContent = 'No saved sticker sheets yet';
@@ -1273,8 +1344,9 @@
 
         refreshSubmitState();
         if (boothToken) {
+          modeTabs.classList.remove('hidden');
           queueCard.classList.remove('hidden');
-          galleryCard.classList.remove('hidden');
+          setActiveTab('feed');
           void fetchQueueSnapshot();
           void fetchGallery();
           queuePollTimer = setInterval(fetchQueueSnapshot, 4000);
@@ -1282,6 +1354,7 @@
         if (storageKey) {
           const existingId = localStorage.getItem(storageKey);
           if (existingId) {
+            setActiveTab('create');
             startPolling(existingId);
           }
         }
