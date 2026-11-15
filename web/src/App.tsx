@@ -98,6 +98,7 @@ interface PrintQueueState {
   queued: PrintJob[];
   history: PrintJob[];
   pausedReason?: string | null;
+  stalledWarning?: string | null;
 }
 
 interface MobileQrInfo {
@@ -1490,13 +1491,23 @@ export default function App() {
                     </div>
                   )}
 
+                {queueState.stalledWarning && !queueState.pausedReason && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-950">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-semibold">Printer Not Feeding Paper Yet</p>
+                      <p className="text-[11px] opacity-90">{queueState.stalledWarning}</p>
+                    </div>
+                  </div>
+                )}
+
                 {queueState.pausedReason && (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-300 bg-red-50 px-3.5 py-3 text-xs text-red-950">
                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                       <div className="min-w-0 space-y-0.5">
                         <p className="font-semibold">
-                          Printer Paused — Needs Ink Cartridge / Paper Check
+                          Printer Paused — Needs Attention (Paper / Ink / Power-Cycle)
                         </p>
                         <p className="text-[11px] opacity-90">
                           {queueState.pausedReason} All queued prints are safely saved in line.
@@ -1654,13 +1665,22 @@ export default function App() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {queueState.stalledWarning && !queueState.pausedReason && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-sm font-semibold">Printer Not Feeding Paper Yet</p>
+                    <p className="opacity-90">{queueState.stalledWarning}</p>
+                  </div>
+                </div>
+              )}
               {queueState.pausedReason && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-950">
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-sm font-semibold">
-                        Printer Paused — Needs Ink Cartridge / Paper Check
+                        Printer Paused — Needs Attention (Paper / Ink / Power-Cycle)
                       </p>
                       <p className="opacity-90">
                         {queueState.pausedReason} All queued prints are safely saved in line.

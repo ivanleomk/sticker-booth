@@ -496,7 +496,7 @@ async function processPrintQueue() {
       } catch (err) {
         const errMsg = err?.message || 'Print failed';
         if (
-          /PixCutAlert|Printer fault blocks printing|8101|5301|5306|state-60|not found via BLE/i.test(
+          /PixCutAlert|PrinterStall|Printer fault blocks printing|8101|5301|5306|state-60|not found via BLE|did not finish within|RFCOMM link closed/i.test(
             errMsg
           )
         ) {
@@ -1314,11 +1314,25 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/queue') {
+      let stalledWarning = null;
+      if (
+        activePrintJob?.startedAt &&
+        activePrintJob.phase === 'print' &&
+        !/Printing sheet \(page|Kiss-cutting/i.test(activePrintJob.progressText || '')
+      ) {
+        const elapsedMs = Date.now() - Date.parse(activePrintJob.startedAt);
+        if (Number.isFinite(elapsedMs) && elapsedMs >= 25_000) {
+          stalledWarning = `PixCut S1 hasn't started feeding paper after ${Math.round(
+            elapsedMs / 1000
+          )}s — check paper/ribbon or power-cycle the printer if it stays stuck.`;
+        }
+      }
       sendJson(res, 200, {
         activeJob: activePrintJob ? sanitizeJob(activePrintJob) : null,
         queued: printQueue.map(sanitizeJob),
         history: printHistory.map(sanitizeJob),
         pausedReason: queuePausedReason,
+        stalledWarning,
       });
       return;
     }

@@ -1027,9 +1027,10 @@ async def cmd_daemon(transport: str) -> None:
                     )
 
                     last_key: tuple[Any, Any, Any, Any] | None = None
+                    saw_feed_or_cut = False
 
                     def on_progress(info: dict[str, Any] | None) -> None:
-                        nonlocal last_key
+                        nonlocal last_key, saw_feed_or_cut
                         if not info:
                             return
                         key = (
@@ -1038,6 +1039,11 @@ async def cmd_daemon(transport: str) -> None:
                             info.get("printing-page-number"),
                             info.get("cutting-progress"),
                         )
+                        try:
+                            if int(key[2] or 0) >= 1 or int(key[3] or 0) >= 1:
+                                saw_feed_or_cut = True
+                        except Exception:
+                            pass
                         if key != last_key:
                             last_key = key
                             _log(
@@ -1071,9 +1077,32 @@ async def cmd_daemon(transport: str) -> None:
                                 }
                             )
 
-                    try:
-                        outcome = await cur_pc.wait(
+                    wait_task = asyncio.create_task(
+                        cur_pc.wait(
                             job_id, poll=1.0, timeout=150.0, on_progress=on_progress
+                        )
+                    )
+
+                    async def _stall_watchdog() -> None:
+                        await asyncio.sleep(45.0)
+                        if not saw_feed_or_cut and not wait_task.done():
+                            wait_task.cancel()
+
+                    wd_task = asyncio.create_task(_stall_watchdog())
+                    try:
+                        outcome = await wait_task
+                    except asyncio.CancelledError:
+                        _log(
+                            f"PrinterStall: job #{job_id} did not feed paper within 45s; cancelling latched job"
+                        )
+                        try:
+                            await asyncio.wait_for(cur_pc.cancel_job(job_id), timeout=5.0)
+                        except Exception as cancel_exc:
+                            _log(
+                                f"Warning: cancel_job({job_id}) failed: {cancel_exc}"
+                            )
+                        raise RuntimeError(
+                            f"PrinterStall: PixCut S1 did not feed paper after 45s (job #{job_id}). Check paper tray/ribbon and power-cycle the printer."
                         )
                     except (client.PixCutAlert, TimeoutError) as exc:
                         _log(
@@ -1086,6 +1115,8 @@ async def cmd_daemon(transport: str) -> None:
                                 f"Warning: cancel_job({job_id}) failed: {cancel_exc}"
                             )
                         raise
+                    finally:
+                        wd_task.cancel()
 
                     return {
                         "ok": True,
