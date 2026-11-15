@@ -26,6 +26,8 @@ const MIME_TYPES = {
 
 /** @type {Map<string, any>} */
 const submissions = new Map();
+/** @type {any} */
+let latestQueueSnapshot = null;
 
 async function loadPersisted() {
   try {
@@ -245,10 +247,24 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/queue') {
+      const token = (url.searchParams.get('k') || '').trim();
+      if (!BOOTH_TOKEN || !safeEqual(token, BOOTH_TOKEN)) {
+        sendJson(res, 403, { ok: false, error: 'Invalid booth token' });
+        return;
+      }
+      sendJson(res, 200, { ok: true, queue: latestQueueSnapshot });
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/worker/claim') {
       if (!isWorkerAuthorized(req)) {
         sendJson(res, 401, { ok: false, error: 'Unauthorized worker' });
         return;
+      }
+      const body = await readJsonBody(req, 256 * 1024).catch(() => ({}));
+      if (body?.queueSnapshot && typeof body.queueSnapshot === 'object') {
+        latestQueueSnapshot = body.queueSnapshot;
       }
       const now = Date.now();
       const claimed = [];

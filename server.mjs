@@ -1072,10 +1072,53 @@ function startRelayPoller() {
         Authorization: `Bearer ${cfg.workerSecret}`,
       };
 
+      let stalledWarning = null;
+      if (
+        activePrintJob?.startedAt &&
+        activePrintJob.phase === 'print' &&
+        !/Printing sheet \(page|Kiss-cutting/i.test(activePrintJob.progressText || '')
+      ) {
+        const elapsedMs = Date.now() - Date.parse(activePrintJob.startedAt);
+        if (Number.isFinite(elapsedMs) && elapsedMs >= 25_000) {
+          stalledWarning = `PixCut S1 hasn't started feeding paper after ${Math.round(
+            elapsedMs / 1000
+          )}s — check paper/ribbon or power-cycle the printer if it stays stuck.`;
+        }
+      }
+
+      const queueSnapshot = {
+        activeJob: activePrintJob
+          ? {
+              id: activePrintJob.id,
+              guestName: activePrintJob.guestName,
+              copies: activePrintJob.copies || 1,
+              progressText: activePrintJob.progressText || null,
+              source: activePrintJob.source || 'booth',
+            }
+          : null,
+        queued: printQueue.map((j) => ({
+          id: j.id,
+          guestName: j.guestName,
+          copies: j.copies || 1,
+          source: j.source || 'booth',
+        })),
+        recentDone: printHistory.slice(0, 8).map((j) => ({
+          id: j.id,
+          guestName: j.guestName,
+          copies: j.copies || 1,
+          status: j.status,
+          source: j.source || 'booth',
+          finishedAt: j.finishedAt || null,
+        })),
+        pausedReason: queuePausedReason,
+        stalledWarning,
+        updatedAt: new Date().toISOString(),
+      };
+
       const claimRes = await fetch(`${base}/api/worker/claim`, {
         method: 'POST',
         headers,
-        body: '{}',
+        body: JSON.stringify({ queueSnapshot }),
       });
       if (claimRes.ok) {
         const { items, printItems } = await claimRes.json();

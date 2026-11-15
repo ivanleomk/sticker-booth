@@ -299,6 +299,95 @@
           transform: rotate(360deg);
         }
       }
+      .queue-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .queue-section-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 12px 0 6px;
+      }
+      .queue-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .queue-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 11px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #fafafa;
+        font-size: 13px;
+      }
+      .queue-item.is-active {
+        background: var(--amber-soft);
+        border-color: #fcd34d;
+      }
+      .queue-item.is-mine {
+        background: var(--orange-soft);
+        border-color: var(--orange);
+      }
+      .queue-item-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .queue-pos {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: #e5e5e7;
+        color: var(--ink);
+        flex-shrink: 0;
+      }
+      .queue-item.is-active .queue-pos {
+        background: #f59e0b;
+        color: #fff;
+      }
+      .queue-item.is-mine .queue-pos {
+        background: var(--orange);
+        color: #fff;
+      }
+      .queue-name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .queue-meta {
+        font-size: 11px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .queue-empty {
+        font-size: 13px;
+        color: var(--muted);
+        padding: 8px 0;
+      }
+      .turn-banner {
+        background: var(--orange-soft);
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        border-radius: 12px;
+        padding: 9px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      }
       .hidden {
         display: none !important;
       }
@@ -459,6 +548,30 @@
           </button>
         </div>
       </section>
+
+      <section id="queue-card" class="card hidden">
+        <div class="queue-header">
+          <div>
+            <h2 style="font-size: 16px; margin: 0;">Live Print Queue</h2>
+            <p id="queue-updated" class="muted" style="font-size: 11px; margin: 2px 0 0;">
+              Connecting to booth…
+            </p>
+          </div>
+          <button
+            id="queue-refresh-btn"
+            type="button"
+            class="btn"
+            style="height: 32px; padding: 0 12px; font-size: 12px;"
+          >
+            Refresh
+          </button>
+        </div>
+        <div id="queue-turn-banner" class="turn-banner hidden"></div>
+        <div id="queue-alert-banner" class="banner banner-err hidden" style="margin-bottom: 10px;"></div>
+        <div id="queue-body">
+          <p class="queue-empty">Loading live queue…</p>
+        </div>
+      </section>
     </main>
 
     <script>
@@ -500,14 +613,22 @@
         const editRegenBtn = document.getElementById('edit-regen-btn');
         const saveSheetBtn = document.getElementById('save-sheet-btn');
         const anotherBtn = document.getElementById('another-btn');
+        const queueCard = document.getElementById('queue-card');
+        const queueUpdated = document.getElementById('queue-updated');
+        const queueRefreshBtn = document.getElementById('queue-refresh-btn');
+        const queueTurnBanner = document.getElementById('queue-turn-banner');
+        const queueAlertBanner = document.getElementById('queue-alert-banner');
+        const queueBody = document.getElementById('queue-body');
 
         let photoDataUrl = null;
         let selectedStyle = 'chibi';
         let submitting = false;
         let confirmingPrint = false;
         let currentSubId = null;
+        let currentTicketId = null;
         let seededConfirmNameForId = null;
         let pollTimer = null;
+        let queuePollTimer = null;
         let trackerStartedAt = 0;
 
         if (!boothToken) {
@@ -726,15 +847,17 @@
               const data = await res.json();
               if (!res.ok) {
                 if (res.status === 404 && storageKey) {
-                  sessionStorage.removeItem(storageKey);
+                  localStorage.removeItem(storageKey);
                   clearInterval(pollTimer);
                   pollTimer = null;
                   currentSubId = null;
+                  currentTicketId = null;
                   formView.classList.remove('hidden');
                   trackerView.classList.add('hidden');
                 }
                 return;
               }
+              currentTicketId = data.submission?.ticketId ?? null;
               renderSubmission(data.submission);
               if (['preview_ready', 'done', 'error'].includes(data.submission.status)) {
                 clearInterval(pollTimer);
@@ -782,8 +905,9 @@
             clearInterval(pollTimer);
             pollTimer = null;
           }
-          if (storageKey) sessionStorage.removeItem(storageKey);
+          if (storageKey) localStorage.removeItem(storageKey);
           currentSubId = null;
+          currentTicketId = null;
           seededConfirmNameForId = null;
           trackerStartedAt = 0;
           const editedName = confirmNameInput.value.trim();
@@ -826,7 +950,8 @@
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Submission failed');
-            if (storageKey) sessionStorage.setItem(storageKey, data.id);
+            if (storageKey) localStorage.setItem(storageKey, data.id);
+            currentTicketId = data.submission?.ticketId ?? null;
             renderSubmission(data.submission);
             startPolling(data.id);
           } catch (err) {
@@ -852,8 +977,9 @@
             clearInterval(pollTimer);
             pollTimer = null;
           }
-          if (storageKey) sessionStorage.removeItem(storageKey);
+          if (storageKey) localStorage.removeItem(storageKey);
           currentSubId = null;
+          currentTicketId = null;
           seededConfirmNameForId = null;
           photoDataUrl = null;
           customNoteEl.value = '';
@@ -864,9 +990,180 @@
           refreshSubmitState();
         });
 
+        function buildQueueRow(item, opts) {
+          const row = document.createElement('div');
+          const isMine =
+            currentTicketId !== null &&
+            currentTicketId !== undefined &&
+            Number(item.id) === Number(currentTicketId);
+          row.className = 'queue-item' + (opts.active ? ' is-active' : '') + (isMine ? ' is-mine' : '');
+
+          const left = document.createElement('div');
+          left.className = 'queue-item-left';
+
+          const badge = document.createElement('span');
+          badge.className = 'queue-pos';
+          badge.textContent = opts.badge;
+          left.appendChild(badge);
+
+          const name = document.createElement('span');
+          name.className = 'queue-name';
+          const copiesTag = item.copies && item.copies > 1 ? ` (×${item.copies})` : '';
+          name.textContent = `#${item.id} · ${item.guestName || 'Guest'}${copiesTag}${isMine ? ' (You)' : ''}`;
+          left.appendChild(name);
+
+          const meta = document.createElement('span');
+          meta.className = 'queue-meta';
+          meta.textContent = opts.meta || '';
+
+          row.appendChild(left);
+          row.appendChild(meta);
+          return row;
+        }
+
+        function renderQueue(queue) {
+          if (!queue) {
+            queueUpdated.textContent = 'Waiting for booth sync…';
+            queueTurnBanner.classList.add('hidden');
+            queueAlertBanner.classList.add('hidden');
+            queueBody.innerHTML = '<p class="queue-empty">Queue will appear once the booth checks in.</p>';
+            return;
+          }
+
+          if (queue.updatedAt) {
+            const t = new Date(queue.updatedAt);
+            queueUpdated.textContent = `Updated ${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
+          }
+
+          const alertMsg = queue.pausedReason || queue.stalledWarning || '';
+          if (alertMsg) {
+            queueAlertBanner.textContent = alertMsg;
+            queueAlertBanner.classList.remove('hidden');
+          } else {
+            queueAlertBanner.classList.add('hidden');
+          }
+
+          const activeJob = queue.activeJob || null;
+          const queued = Array.isArray(queue.queued) ? queue.queued : [];
+          const recentDone = Array.isArray(queue.recentDone) ? queue.recentDone : [];
+
+          if (currentTicketId !== null && currentTicketId !== undefined) {
+            if (activeJob && Number(activeJob.id) === Number(currentTicketId)) {
+              queueTurnBanner.textContent = `Your turn! Ticket #${currentTicketId} is printing right now.`;
+              queueTurnBanner.classList.remove('hidden');
+            } else {
+              const idx = queued.findIndex((j) => Number(j.id) === Number(currentTicketId));
+              if (idx >= 0) {
+                const ahead = idx + (activeJob ? 1 : 0);
+                queueTurnBanner.textContent =
+                  ahead === 0
+                    ? `You're next up! (Ticket #${currentTicketId})`
+                    : `You're #${idx + 1} in the waiting queue (${ahead} ahead of Ticket #${currentTicketId}).`;
+                queueTurnBanner.classList.remove('hidden');
+              } else {
+                queueTurnBanner.classList.add('hidden');
+              }
+            }
+          } else {
+            queueTurnBanner.classList.add('hidden');
+          }
+
+          queueBody.innerHTML = '';
+
+          const nowLabel = document.createElement('div');
+          nowLabel.className = 'queue-section-label';
+          nowLabel.textContent = 'Now Printing';
+          queueBody.appendChild(nowLabel);
+
+          if (activeJob) {
+            const list = document.createElement('div');
+            list.className = 'queue-list';
+            list.appendChild(
+              buildQueueRow(activeJob, {
+                active: true,
+                badge: 'NOW',
+                meta: activeJob.progressText || 'Printing…',
+              })
+            );
+            queueBody.appendChild(list);
+          } else {
+            const empty = document.createElement('p');
+            empty.className = 'queue-empty';
+            empty.textContent = 'Printer idle';
+            queueBody.appendChild(empty);
+          }
+
+          const upNextLabel = document.createElement('div');
+          upNextLabel.className = 'queue-section-label';
+          upNextLabel.textContent = `Up Next (${queued.length})`;
+          queueBody.appendChild(upNextLabel);
+
+          if (queued.length > 0) {
+            const list = document.createElement('div');
+            list.className = 'queue-list';
+            queued.forEach((item, index) => {
+              list.appendChild(
+                buildQueueRow(item, {
+                  active: false,
+                  badge: `#${index + 1}`,
+                  meta: item.source === 'phone' ? 'QR' : 'Booth',
+                })
+              );
+            });
+            queueBody.appendChild(list);
+          } else {
+            const empty = document.createElement('p');
+            empty.className = 'queue-empty';
+            empty.textContent = 'No sheets waiting in line';
+            queueBody.appendChild(empty);
+          }
+
+          if (recentDone.length > 0) {
+            const doneLabel = document.createElement('div');
+            doneLabel.className = 'queue-section-label';
+            doneLabel.textContent = 'Recently Printed';
+            queueBody.appendChild(doneLabel);
+
+            const list = document.createElement('div');
+            list.className = 'queue-list';
+            recentDone.forEach((item) => {
+              list.appendChild(
+                buildQueueRow(item, {
+                  active: false,
+                  badge: item.status === 'error' ? 'ERR' : 'DONE',
+                  meta: item.status === 'error' ? 'Needs retry' : 'Ready',
+                })
+              );
+            });
+            queueBody.appendChild(list);
+          }
+        }
+
+        async function fetchQueueSnapshot() {
+          if (!boothToken) return;
+          try {
+            const res = await fetch(`/api/queue?k=${encodeURIComponent(boothToken)}`);
+            const data = await res.json();
+            if (res.ok && data.ok) {
+              renderQueue(data.queue);
+            }
+          } catch {
+            // Retry on next interval
+          }
+        }
+
+        queueRefreshBtn.addEventListener('click', () => {
+          void fetchQueueSnapshot();
+        });
+
         refreshSubmitState();
+        if (boothToken) {
+          queueCard.classList.remove('hidden');
+          void fetchQueueSnapshot();
+          queuePollTimer = setInterval(fetchQueueSnapshot, 4000);
+        }
         if (storageKey) {
-          const existingId = sessionStorage.getItem(storageKey);
+          const existingId = localStorage.getItem(storageKey);
           if (existingId) {
             startPolling(existingId);
           }
